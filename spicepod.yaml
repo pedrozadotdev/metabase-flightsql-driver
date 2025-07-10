@@ -6,7 +6,7 @@ runtime:
     api-key:
       enabled: true
       keys:
-        - 1234567890 # Or specify the API key directly
+        - 1234567890
 datasets:
   - name: yellow_taxis
     from: file://data/yellow_tripdata_2024-01.parquet
