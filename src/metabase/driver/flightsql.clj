@@ -3,7 +3,12 @@
 
   This driver uses the Apache Arrow Flight SQL JDBC driver.
   ...
-  "
+  " 
+  (:import
+   (java.sql PreparedStatement Timestamp)
+   (java.time LocalDateTime)
+   (java.time LocalDate LocalTime)
+   )
   (:require
    ;; String manipulation functions.
    [clojure.string :as str]
@@ -31,6 +36,8 @@
    [metabase.driver.sql-jdbc.sync :as sql-jdbc.sync]
    ;; SQL execution helper functions.
    [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
+   [metabase.util.honey-sql-2        :as h2x]
+   [metabase.driver.sql.query-processor :as sql.qp]
    ))
 
 ;; ----------------------------------------------------------------
@@ -48,7 +55,8 @@
 (doseq [[feature supported?]
         {:describe-fields           true
          :connection-impersonation  false
-         :convert-timezone          true}]
+         :convert-timezone          true
+         :parameterized-sql         true}]
   (defmethod driver/database-supports? [:arrow-flight-sql feature]
     [_driver _feature _db]
     supported?))
@@ -238,3 +246,105 @@
       :where (vec (cons :and where-clause))
       :order-by [:table_schema :table_name :ordinal_position]}
      :dialect (sql.qp/quote-style driver))))
+
+
+;; ----------------------------------------------------------------
+;; Support `… - INTERVAL 'N unit'` in filters like "yesterday"
+(defmethod sql.qp/add-interval-honeysql-form :arrow-flight-sql
+  [_driver hsql-form amount unit]
+  (if (= unit :quarter)
+    ;; Duck the lack of quarters by translating 1 quarter → 3 months, etc.
+    (recur _driver hsql-form (* amount 3) :month)
+    ;; Build: (<hsql-form> + INTERVAL 'amount unit')
+    (h2x/+ (h2x/->timestamp-with-time-zone hsql-form)
+           [:raw (format "(INTERVAL '%d' %s)" (int amount) (name unit))])))
+
+
+;; ----------------------------------------------------------------
+;; Support date‐truncation and extraction for Arrow Flight SQL
+(defmethod sql.qp/date [:arrow-flight-sql :default]
+  [_driver _expr-type expr]
+  ;; fall back to the raw expression
+  expr)
+
+(defmethod sql.qp/date [:arrow-flight-sql :minute]
+  [_driver _ expr]
+  [:date_trunc (h2x/literal :minute) expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :minute-of-hour]
+  [_driver _ expr]
+  [:minute expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :hour]
+  [_driver _ expr]
+  [:date_trunc (h2x/literal :hour) expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :hour-of-day]
+  [_driver _ expr]
+  [:hour expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :day]
+  [_driver _ expr]
+  [:date_trunc (h2x/literal :day) expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :day-of-month]
+  [_driver _ expr]
+  [:day expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :day-of-year]
+  [_driver _ expr]
+  [:dayofyear expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :day-of-week]
+  [driver _ expr]
+  ;; adjust to Metabase's configured start‐of‐week
+  (sql.qp/adjust-day-of-week driver [:isodow expr]))
+
+(defmethod sql.qp/date [:arrow-flight-sql :week]
+  [driver _ expr]
+  ;; preserves your db‐start‐of‐week setting
+  (sql.qp/adjust-start-of-week
+   driver
+   (partial conj [:date_trunc] (h2x/literal :week))
+   expr))
+
+(defmethod sql.qp/date [:arrow-flight-sql :month]
+  [_driver _ expr]
+  [:date_trunc (h2x/literal :month) expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :month-of-year]
+  [_driver _ expr]
+  [:month expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :quarter]
+  [_driver _ expr]
+  [:date_trunc (h2x/literal :quarter) expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :quarter-of-year]
+  [_driver _ expr]
+  [:quarter expr])
+
+(defmethod sql.qp/date [:arrow-flight-sql :year]
+  [_driver _ expr]
+  [:date_trunc (h2x/literal :year) expr])
+
+(defmethod sql-jdbc.execute/set-parameter
+  ;; Bind a LocalDateTime into the PreparedStatement as a SQL Timestamp
+  [:arrow-flight-sql LocalDateTime]
+  [_driver ^PreparedStatement stmt ^Integer idx ^LocalDateTime dt]
+  (.setTimestamp stmt idx (Timestamp/valueOf dt)))
+
+(defmethod sql-jdbc.execute/set-parameter
+  [:arrow-flight-sql LocalDate]
+  [_ _ stmt idx ^LocalDate d]
+  (.setDate stmt idx (java.sql.Date/valueOf d)))
+
+(defmethod sql-jdbc.execute/set-parameter
+  [:arrow-flight-sql LocalTime]
+  [_ _ stmt idx ^LocalTime t]
+  (.setTime stmt idx (java.sql.Time/valueOf t)))
+
+
+(defmethod driver/db-start-of-week :arrow-flight-sql
+  [_]
+  :monday)
