@@ -24,7 +24,19 @@ jobs:
 
     - name: Register arrow-flight-sql in deps.edn
       working-directory: ./metabase
-      run: sed -i 's/\(metabase\/vertica[^{]*{:local\/root "vertica"}\)}}}/\1}\n  metabase\/arrow-flight-sql {:local\/root "arrow-flight-sql"}\n}}}/' modules/drivers/deps.edn
+      run: |
+        sed -i 's/\(metabase\/vertica[^{]*{:local\/root "vertica"}\)}}}/\1}\n  metabase\/arrow-flight-sql {:local\/root "arrow-flight-sql"}\n}}}/' modules/drivers/deps.edn
+        echo "--- Verifying modules/drivers/deps.edn content ---"
+        cat modules/drivers/deps.edn
+        echo "----------------------------------------------------"
+
+
+    - name: List driver files for debugging
+      run: |
+        echo "Listing contents oºf metabase/modules/drivers/arrow-flight-sql:"
+        ls -R metabase/modules/drivers/
+        ls -R metabase/modules/drivers/arrow-flight-sql
+
 
     - name: Set up JDK 21
       uses: actions/setup-java@v4
