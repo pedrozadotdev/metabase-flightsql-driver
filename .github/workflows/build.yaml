@@ -25,7 +25,7 @@ jobs:
     - name: Register arrow-flight-sql in deps.edn
       working-directory: ./metabase
       run: |
-        sed -i 's/\(metabase\/vertica[^{]*{:local\/root "vertica"}\)}}}/\1}\n  metabase\/arrow-flight-sql {:local\/root "arrow-flight-sql"}\n}}}/' modules/drivers/deps.edn
+        git apply ./modules/drivers/arrow-flight-sql/metabase_drivers_deps.patch
         echo "--- Verifying modules/drivers/deps.edn content ---"
         cat modules/drivers/deps.edn
         echo "----------------------------------------------------"
