@@ -22,7 +22,17 @@ jobs:
       uses: actions/checkout@v4
       with:
         path: metabase/modules/drivers/arrow-flight-sql
+
+    - name: Debug - List driver files
+      run: |
+        echo "Listing metabase/modules/drivers/arrow-flight-sql structure:"
+        find metabase/modules/drivers/arrow-flight-sql -type f -name "*.clj" || echo "No .clj files found"
+        echo "Listing src directory:"
+        ls -la metabase/modules/drivers/arrow-flight-sql/src/ || echo "No src directory"
+        echo "Expected file location:"
+        ls -la metabase/modules/drivers/arrow-flight-sql/src/metabase/driver/ || echo "No driver directory"
         
+
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
