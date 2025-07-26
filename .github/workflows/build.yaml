@@ -22,6 +22,12 @@ jobs:
       with:
         path: metabase/modules/drivers/arrow-flight-sql
 
+    - name: List driver files for debugging
+      run: |
+        echo "Listing contents of metabase/modules/drivers/arrow-flight-sql:"
+        ls -R metabase/modules/drivers/
+        ls -R metabase/modules/drivers/arrow-flight-sql
+
     - name: Register arrow-flight-sql in deps.edn
       working-directory: ./metabase
       run: |
@@ -29,13 +35,6 @@ jobs:
         echo "--- Verifying modules/drivers/deps.edn content ---"
         cat modules/drivers/deps.edn
         echo "----------------------------------------------------"
-
-
-    - name: List driver files for debugging
-      run: |
-        echo "Listing contents oºf metabase/modules/drivers/arrow-flight-sql:"
-        ls -R metabase/modules/drivers/
-        ls -R metabase/modules/drivers/arrow-flight-sql
 
 
     - name: Set up JDK 21
