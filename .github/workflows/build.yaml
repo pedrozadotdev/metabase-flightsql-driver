@@ -21,17 +21,14 @@ jobs:
     - name: Checkout driver code
       uses: actions/checkout@v4
       with:
-        path: metabase/modules/drivers/arrow-flight-sql
+        path: metabase/modules/drivers/arrow_flight_sql
 
-    - name: Debug - List driver files
+    - name: Debug - Check metabase-plugin.yaml
       run: |
-        echo "Listing metabase/modules/drivers/arrow-flight-sql structure:"
-        find metabase/modules/drivers/arrow-flight-sql -type f -name "*.clj" || echo "No .clj files found"
-        echo "Listing src directory:"
-        ls -la metabase/modules/drivers/arrow-flight-sql/src/ || echo "No src directory"
-        echo "Expected file location:"
-        ls -la metabase/modules/drivers/arrow-flight-sql/src/metabase/driver/ || echo "No driver directory"
-        
+        echo "Contents of metabase-plugin.yaml:"
+        cat metabase/modules/drivers/arrow_flight_sql/resources/metabase-plugin.yaml || echo "No metabase-plugin.yaml found"
+        echo "Current working directory structure:"
+        ls -la metabase/modules/drivers/
 
     - name: Set up JDK 21
       uses: actions/setup-java@v4
@@ -65,5 +62,5 @@ jobs:
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       with:
         name: metabase-arrow-flight-sql-driver
-        path: metabase/resources/modules/arrow-flight-sql.metabase-driver.jar
+        path: metabase/resources/modules/arrow_flight_sql.metabase-driver.jar
         if-no-files-found: error
