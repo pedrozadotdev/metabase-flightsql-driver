@@ -4,63 +4,59 @@ on:
   push:
     branches: [ main ]
   pull_request:
-
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Clone Metabase repository
       uses: actions/checkout@v4
       with:
         repository: metabase/metabase
         path: metabase
-        
+
     - name: Checkout driver code
       uses: actions/checkout@v4
       with:
-        path: metabase/modules/drivers/arrow_flight_sql
+        path: metabase/modules/drivers/arrow-flight-sql
 
-    - name: Debug - Check metabase-plugin.yaml
-      run: |
-        echo "Contents of metabase-plugin.yaml:"
-        cat metabase/modules/drivers/arrow_flight_sql/resources/metabase-plugin.yaml || echo "No metabase-plugin.yaml found"
-        echo "Current working directory structure:"
-        ls -la metabase/modules/drivers/
+    - name: Register arrow-flight-sql in deps.edn
+      working-directory: ./metabase
+      run: sed -i '/metabase\/vertica/a metabase\/arrow-flight-sql {:local\/root "arrow-flight-sql"}' modules/drivers/deps.edn
 
     - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '21'
-        
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: 'lts/*'
-        
+
     - name: Install Yarn 1.x
       run: |
         npm install -g yarn@1
         yarn --version
-        
+
     - name: Set up Clojure
       uses: DeLaGuardo/setup-clojure@12.3
       with:
         cli: latest
-        
+
     - name: Build driver
       working-directory: ./metabase
       run: |
         chmod +x ./bin/build-driver.sh
         ./bin/build-driver.sh arrow-flight-sql
-        
+
     - name: Upload driver artifact
       uses: actions/upload-artifact@v4
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       with:
         name: metabase-arrow-flight-sql-driver
-        path: metabase/resources/modules/arrow_flight_sql.metabase-driver.jar
+        path: metabase/resources/modules/arrow-flight-sql.metabase-driver.jar
         if-no-files-found: error
