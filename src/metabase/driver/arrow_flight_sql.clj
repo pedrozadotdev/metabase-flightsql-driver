@@ -163,13 +163,13 @@
 ;; Custom Schema Sync Implementations
 ;; ----------------------------------------------------------------
 
-;; List tables by executing the "SHOW TABLES" command.
+;; List tables by querying information_schema.tables.
 (defmethod driver/describe-database :arrow-flight-sql
   [driver database]
   (let [spec (sql-jdbc.conn/connection-details->spec :arrow-flight-sql (:details database))]
     (with-open [conn (jdbc/get-connection spec)]
       (let [rows (jdbc/query {:connection conn}
-                             ["SHOW TABLES"]
+                             ["SELECT table_name, table_schema FROM information_schema.tables"]
                              {:identifiers str/lower-case})
             formatted (->> rows
                            (filter #(not= (str/lower-case (:table_schema %)) "information_schema"))
