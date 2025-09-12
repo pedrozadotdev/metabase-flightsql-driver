@@ -8,6 +8,7 @@ driver:
   display-name: Arrow Flight SQL
   lazy-load: true
   parent: sql-jdbc
+  contact-info: "https://github.com/J0hnG4lt/metabase-flightsql-driver/issues"
   connection-properties:
     - name: host
       display-name: Host
