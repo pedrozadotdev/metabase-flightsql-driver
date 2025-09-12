@@ -17,26 +17,35 @@ driver:
     - name: port
       display-name: Port
       placeholder: "443"
+      type: integer
       required: true
-    - name: user
+
+    - name: username
+      display-name: Username (optional)
       required: false
-      display-name: User
+
+    # Use the built-in password template; put overrides INSIDE the merge list
     - merge:
         - password
-      type: secret
-      display-name: Password
-      required: false
-    - name: token
-      display-name: Token (optional)
-      type: secret
+        - display-name: Password (optional)
+        - required: false
+
+    # Token as a secret field using the same password template
+    - merge:
+        - password
+        - name: token
+        - display-name: Token (optional)
+        - required: false
+
     - name: useEncryption
       display-name: Use Encryption
       type: boolean
-      default: false
-    - name: disableCertificateVerification
-      display-name: Disable Cerificate Verification
-      type: boolean
       default: true
+    - name: disableCertificateVerification
+      display-name: Disable Certificate Verification
+      type: boolean
+      default: false
+
     - advanced-options-start
     - merge:
         - additional-options
@@ -45,6 +54,6 @@ driver:
 
 init:
   - step: load-namespace
-    namespace:  metabase.driver.arrow-flight-sql
+    namespace: metabase.driver.arrow-flight-sql
   - step: register-jdbc-driver
     class: org.apache.arrow.driver.jdbc.ArrowFlightJdbcDriver

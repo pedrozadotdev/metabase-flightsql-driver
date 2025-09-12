@@ -34,10 +34,6 @@
    ))
 
 ;; ----------------------------------------------------------------
-;; Register this driver as a JDBC-based driver with parent :sql-jdbc.
-(driver/register! :arrow-flight-sql, :parent #{:sql-jdbc})
-
-;; ----------------------------------------------------------------
 ;; Define the display name for the Arrow Flight SQL driver.
 (defmethod driver/display-name :arrow-flight-sql [_]
   "Arrow Flight SQL")
@@ -68,17 +64,17 @@
 ;; ----------------------------------------------------------------
 (defmethod sql-jdbc.conn/connection-details->spec :arrow-flight-sql
   [_ details]
-  (let [{:keys [host port token user password useEncryption disableCertificateVerification]
+  (let [{:keys [host port token username user password useEncryption disableCertificateVerification]
          :or   {useEncryption true
                 disableCertificateVerification false}} details
+        ;; prefer :username (manifest) but fall back to :user
+        username* (or (when (and (string? username) (not (str/blank? username))) username)
+                      (when (and (string? user)      (not (str/blank? user)))      user))
 
         ;; URL-encode only provided creds
-        enc-token (when (and (string? token) (not (str/blank? token)))
-                    (codec/url-encode token))
-        enc-user  (when (and (string? user) (not (str/blank? user)))
-                    (codec/url-encode user))
-        enc-pass  (when (and (string? password) (not (str/blank? password)))
-                    (codec/url-encode password))
+        enc-token (when (and (string? token)     (not (str/blank? token)))     (codec/url-encode token))
+        enc-user  (when (and (string? username*) (not (str/blank? username*))) (codec/url-encode username*))
+        enc-pass  (when (and (string? password)  (not (str/blank? password)))  (codec/url-encode password))
 
         ;; Choose exactly ONE auth mode: token wins over user/pass
         auth-qps  (cond
@@ -90,8 +86,8 @@
         ;; Build query params
         params    (-> []
                       (into auth-qps)
-                      (conj (str "useEncryption=" useEncryption))
-                      (conj (str "disableCertificateVerification=" disableCertificateVerification)))
+                      (conj (str "useEncryption=" (boolean useEncryption)))
+                      (conj (str "disableCertificateVerification=" (boolean disableCertificateVerification))))
         qp        (str/join "&" params)
 
         ;; Full JDBC URL
@@ -99,8 +95,6 @@
                        (or host "localhost") ":"
                        (or port 443)
                        (when-not (str/blank? qp) (str "?" qp)))]
-
-    ;; Return spec
     (let [scheme  "jdbc:arrow-flight-sql:"
           subname (subs full-url (count scheme))]
       {:classname   "org.apache.arrow.driver.jdbc.ArrowFlightJdbcDriver"
