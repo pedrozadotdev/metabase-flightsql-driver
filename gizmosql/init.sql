@@ -1,6 +1,22 @@
 -- GizmoSQL initialization script with multiple schemas for testing Metabase connector
 
--- Create schemas
+-- =============================================================================
+-- MULTI-CATALOG SETUP
+-- =============================================================================
+-- DuckDB supports multiple catalogs (databases). The default is "memory".
+-- We create additional catalogs to test catalog filtering in Metabase.
+
+-- Create a second catalog called "warehouse" for archived/historical data
+ATTACH ':memory:' AS warehouse;
+
+-- Create a third catalog called "staging" for temporary/staging data
+ATTACH ':memory:' AS staging;
+
+-- =============================================================================
+-- MEMORY CATALOG (default) - Main operational data
+-- =============================================================================
+
+-- Create schemas in the default "memory" catalog
 CREATE SCHEMA IF NOT EXISTS sales;
 CREATE SCHEMA IF NOT EXISTS hr;
 CREATE SCHEMA IF NOT EXISTS analytics;
@@ -293,3 +309,83 @@ SELECT
     COUNT(DISTINCT session_id) AS unique_sessions
 FROM analytics.website_events
 GROUP BY event_type;
+
+-- =============================================================================
+-- WAREHOUSE CATALOG - Historical/archived data
+-- =============================================================================
+
+-- Create schemas in the warehouse catalog
+CREATE SCHEMA IF NOT EXISTS warehouse.archive;
+CREATE SCHEMA IF NOT EXISTS warehouse.reports;
+
+-- Archived orders (historical data)
+CREATE TABLE warehouse.archive.orders_2023 (
+    order_id INTEGER PRIMARY KEY,
+    customer_id INTEGER,
+    order_date DATE,
+    total_amount DECIMAL(10, 2),
+    status VARCHAR(20)
+);
+
+INSERT INTO warehouse.archive.orders_2023 VALUES
+(501, 1, '2023-01-15', 899.99, 'Delivered'),
+(502, 2, '2023-02-20', 1249.00, 'Delivered'),
+(503, 3, '2023-03-10', 459.99, 'Delivered'),
+(504, 1, '2023-04-05', 299.00, 'Delivered'),
+(505, 4, '2023-05-12', 749.99, 'Delivered'),
+(506, 2, '2023-06-18', 199.99, 'Delivered'),
+(507, 5, '2023-07-22', 1599.00, 'Delivered'),
+(508, 3, '2023-08-30', 89.99, 'Delivered');
+
+-- Monthly summary reports
+CREATE TABLE warehouse.reports.monthly_summary (
+    report_month DATE PRIMARY KEY,
+    total_orders INTEGER,
+    total_revenue DECIMAL(12, 2),
+    avg_order_value DECIMAL(10, 2),
+    new_customers INTEGER
+);
+
+INSERT INTO warehouse.reports.monthly_summary VALUES
+('2023-01-01', 145, 125000.00, 862.07, 23),
+('2023-02-01', 168, 148500.00, 884.23, 31),
+('2023-03-01', 189, 175200.00, 927.00, 28),
+('2023-04-01', 156, 138000.00, 884.62, 19),
+('2023-05-01', 172, 158900.00, 923.78, 25),
+('2023-06-01', 198, 189500.00, 957.07, 35);
+
+-- =============================================================================
+-- STAGING CATALOG - Temporary/staging data
+-- =============================================================================
+
+-- Create schemas in the staging catalog
+CREATE SCHEMA IF NOT EXISTS staging.imports;
+CREATE SCHEMA IF NOT EXISTS staging.temp;
+
+-- Pending customer imports
+CREATE TABLE staging.imports.pending_customers (
+    import_id INTEGER PRIMARY KEY,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    email VARCHAR(100),
+    source VARCHAR(50),
+    import_date TIMESTAMP
+);
+
+INSERT INTO staging.imports.pending_customers VALUES
+(1, 'Alex', 'Turner', 'alex.t@email.com', 'Website Form', '2024-03-20 09:00:00'),
+(2, 'Maria', 'Santos', 'maria.s@email.com', 'Trade Show', '2024-03-20 10:30:00'),
+(3, 'Yuki', 'Tanaka', 'yuki.t@email.com', 'Referral', '2024-03-20 11:45:00');
+
+-- Temp calculation table
+CREATE TABLE staging.temp.daily_calculations (
+    calc_id INTEGER PRIMARY KEY,
+    calc_date DATE,
+    metric_name VARCHAR(50),
+    calculated_value DECIMAL(12, 2),
+    last_updated TIMESTAMP
+);
+
+INSERT INTO staging.temp.daily_calculations VALUES
+(1, '2024-03-20', 'daily_revenue', 24500.00, '2024-03-20 23:59:59'),
+(2, '2024-03-20', 'daily_orders', 45.00, '2024-03-20 23:59:59');

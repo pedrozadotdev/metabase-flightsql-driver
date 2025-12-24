@@ -28,7 +28,9 @@
       "Bash(for i in {1..60})",
       "Bash(if [ $i -eq 60 ])",
       "Bash(then echo \"Timeout\")",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(then echo \"\")"
     ]
   }
 }

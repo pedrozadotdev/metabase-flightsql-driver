@@ -124,13 +124,15 @@
                     :else                   [])
 
         ;; Build query params
+        ;; NOTE: We intentionally do NOT include catalog in the JDBC URL.
+        ;; The Arrow Flight SQL JDBC driver calls SetSessionOptions when catalog is specified,
+        ;; but many Flight SQL servers (e.g., GizmoSQL/DuckDB) don't implement this RPC.
+        ;; Instead, we use the catalog value only for filtering during schema sync
+        ;; (see describe-database and describe-fields-sql methods).
         params    (cond-> []
                     true (into auth-qps)
                     true (conj (str "useEncryption=" (boolean useEncryption)))
-                    true (conj (str "disableCertificateVerification=" (boolean disableCertificateVerification)))
-                    ;; Add catalog if specified
-                    (and (string? catalog) (not (str/blank? catalog)))
-                    (conj (str "catalog=" (codec/url-encode catalog))))
+                    true (conj (str "disableCertificateVerification=" (boolean disableCertificateVerification))))
         qp        (str/join "&" params)
 
         ;; Full JDBC URL
@@ -248,14 +250,21 @@
 
 
 ;; List tables by querying information_schema.tables.
-;; Note: We don't use CURRENT_CATALOG() because it's not supported by all Flight SQL servers (e.g., Spice/DataFusion)
+;; When a catalog is specified in connection details, we filter by table_catalog.
+;; Catalog hierarchy: Catalog → Schema → Table
 (defmethod driver/describe-database :arrow-flight-sql
   [driver database]
   (let [spec (sql-jdbc.conn/connection-details->spec :arrow-flight-sql (:details database))
+        catalog (get-in database [:details :catalog])
+        use-catalog? (and (string? catalog) (not (str/blank? catalog)))
+        ;; Filter by table_catalog when specified
+        query (if use-catalog?
+                (format "SELECT table_name, table_schema FROM information_schema.tables WHERE LOWER(table_catalog) = LOWER('%s')" catalog)
+                "SELECT table_name, table_schema FROM information_schema.tables")
         conn (jdbc/get-connection spec)]
     (try
       (let [rows (jdbc/query {:connection conn}
-                             ["SELECT table_name, table_schema FROM information_schema.tables"]
+                             [query]
                              {:identifiers str/lower-case})
             ;; Filter out system schemas
             formatted (->> rows
@@ -307,10 +316,16 @@
 ;; ----------------------------------------------------------------
 ;; Describe fields by querying the information_schema.columns table.
 ;; Builds a dynamic SQL query based on provided schema and table names.
-;; Note: We don't use CURRENT_CATALOG() because it's not supported by all Flight SQL servers (e.g., Spice/DataFusion)
+;; When a catalog is specified, we filter by table_catalog.
+;; Catalog hierarchy: Catalog → Schema → Table
 (defmethod sql-jdbc.sync/describe-fields-sql :arrow-flight-sql
   [driver & {:keys [schema-names table-names details]}]
-  (let [base-condition [:>= [:inline 1] [:inline 1]]
+  (let [catalog (:catalog details)
+        use-catalog? (and (string? catalog) (not (str/blank? catalog)))
+        base-condition [:>= [:inline 1] [:inline 1]]
+        ;; Filter by table_catalog when specified
+        catalog-condition (when use-catalog?
+                            [:= [:lower :table_catalog] [:inline (str/lower-case catalog)]])
         schema-condition (when (seq schema-names)
                            [:in [:lower :table_schema]
                             (mapv (fn [s] [:inline (str/lower-case s)]) schema-names)])
@@ -318,6 +333,7 @@
                           [:in [:lower :table_name]
                            (mapv (fn [t] [:inline (str/lower-case t)]) table-names)])
         where-clause (cond-> [base-condition]
+                       catalog-condition (conj catalog-condition)
                        schema-condition (conj schema-condition)
                        table-condition (conj table-condition))]
     (sql/format
