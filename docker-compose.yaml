@@ -1,5 +1,3 @@
-version: "2.4"
-
 services:
   builder:
     build:
@@ -16,12 +14,13 @@ services:
     restart: "no"
 
   metabase:
-    image: metabase/metabase:v0.55.7
+    image: metabase/metabase:v0.57.7
     container_name: metabase
     hostname: metabase
     depends_on:
       - postgres
       - spiced
+      - gizmosql
       - builder
     volumes:
       - jar-volume:/builder/target
@@ -66,16 +65,16 @@ services:
       - metanet1
 
   spiced:
-    image: spiceai/spiceai:1.0.6
+    image: spiceai/spiceai:1.10.2
     container_name: spiced-container
     privileged: true
-    user: root
+    # Note: removed 'user: root' as spiceai 1.10.2+ doesn't have root in passwd file
     # this tmpfs prevents an error when the setup script of the dockerfile tries to create this folder after an initial run
     tmpfs:
       - /spice_sandbox
     volumes:
       - type: bind
-        source: ./spicepod.yaml
+        source: ./spice/spicepod.yaml
         target: /app/spicepod.yaml
       - type: bind
         source: ./data
@@ -85,6 +84,26 @@ services:
       - "50051:50051"
       - "8090:8090"
       - "9090:9090"
+    networks:
+      - metanet1
+
+  gizmosql:
+    image: gizmodata/gizmosql:latest
+    container_name: gizmosql
+    hostname: gizmosql
+    volumes:
+      - type: bind
+        source: ./gizmosql/init.sql
+        target: /opt/gizmosql/init.sql
+    environment:
+      TLS_ENABLED: "false"
+      GIZMOSQL_USERNAME: "gizmosql"
+      GIZMOSQL_PASSWORD: "gizmosql_password"
+      PRINT_QUERIES: "1"
+      DATABASE_FILENAME: ":memory:"
+      INIT_SQL_COMMANDS_FILE: "/opt/gizmosql/init.sql"
+    ports:
+      - "31337:31337"
     networks:
       - metanet1
 

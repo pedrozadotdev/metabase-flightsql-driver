@@ -10,91 +10,157 @@ My main goal was to allow Metabase to use [Spice.ai OSS](https://spiceai.org/doc
 - Flexible configuration: Supports custom connection properties such as host, port, user, password, token, and encryption.
 - Custom Schema Sync: Implements table and column description methods for seamless Metabase integration.
 - Timestamp Conversion: Automatically converts TIMESTAMP columns to local date-time objects.
+- Field Filters: Full support for Metabase field filters including table aliases for JOIN queries.
 
 ## Installation
 
 ### Prerequisites
 
-- Leiningen (https://leiningen.org/) – for building the project.
 - Podman (https://podman.io/) – for container management.
-- Metabase (https://www.metabase.com/) – the latest version is recommended.
+- Python 3 – for running the automated setup script.
+- Leiningen (https://leiningen.org/) – optional, for local builds (the docker-compose handles this automatically).
 
-### Building the Driver
+### Quick Start
 
 1. Clone the Repository
 
+   ```bash
    git clone https://github.com/J0hnG4lt/metabase-flightsql-driver.git
-   cd metabase-driver
+   cd metabase-flightsql-driver
+   ```
 
-2. Build the Uberjar
+2. Start all services
 
-   lein uberjar
+   ```bash
+   podman compose up -d
+   ```
 
+3. Wait for Metabase to be ready (takes ~1-2 minutes for JAR build + Metabase startup)
 
-The docker-compose file also contains a builder service, so don´t worry if you have issues when installing lein and clojure.
+   ```bash
+   # Check if Metabase is ready
+   podman exec metabase curl -s http://localhost:3000/api/health
+   ```
 
-### Deploying with Podman Compose
+4. Run the automated setup script
 
-Run the following command:
+   ```bash
+   python scripts/metabase_setup.py
+   ```
 
+   This script will:
+   - Perform initial Metabase setup (creates admin user)
+   - Create an API key for automation
+   - Configure database connections (GizmoSQL and Spice.ai)
+   - Create a comprehensive test dashboard with 32 cards and 5 field filters
+
+5. Open Metabase at http://localhost:3000
+   - Email: `admin@metabase.local`
+   - Password: `Metabase123!`
+
+### Building the Driver Manually
+
+If you prefer to build locally:
+
+```bash
+lein uberjar
 ```
-podman compose up --build
-```
 
-This launches the following services:
+The docker-compose file also contains a builder service, so don't worry if you have issues when installing lein and clojure.
 
-1. Builder: this uses lein to produce an uberjar that is stored in a volume.
-2. Spice AI: this allows us to read a parquet and make it available through the Arrow Flight SQL protocol.
-3. Postgres: this is the internal database used by Metabase.
-4. Metabase: this is the BI tool for which we are building this driver. It reads the JAR from the builder services and it uses postgres to store its configuration, charts, dashboards, etc. 
+## Docker Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| metabase | 3000 | Metabase BI tool |
+| postgres | 5432 | Metabase application database |
+| spiced | 50051, 8090, 9090 | Spice.ai Flight SQL server |
+| gizmosql | 31337 | GizmoSQL Flight SQL server (DuckDB-based) |
+| builder | - | Builds the driver JAR |
 
 ## Configuration
 
-When setting up the connection in Metabase, the driver registers under the name :arrow-flight-sql with :sql-jdbc as its parent. The main configuration properties include:
+When setting up the connection in Metabase, the driver registers under the name `:arrow-flight-sql` with `:sql-jdbc` as its parent. The main configuration properties include:
 
-- Host: (Default: localhost) – The server's hostname or IP address.
-- Port: (Default: 443) – The port to use for the connection.
-- User: (Optional) – Username for authentication.
-- Password: (Optional) – Password for authentication (supports secret merging).
-- Token: (Optional) – A secure token for connection.
-- Catalog: (Optional) - The name of the catalog to use.  If not specified, the default catalog will be used.
-- Use Encryption: (Default: true) – Enable or disable connection encryption. We don´t use this in our tests.
-
-Advanced options can be set via the additional-options field.
-
-## Integration with Metabase
-
-To integrate the driver into Metabase:
-
-1. Place the JAR in the Plugins Directory  
-   Ensure that the built uberjar (`metabase-flightsql-driver-0.1.0-SNAPSHOT-standalone.jar`) is located in the Metabase plugins directory and rename it to `flightsql-metabase-driver.jar`.
-
-2. Update the Metabase Container  
-   Modify your container settings (as shown above) to mount the driver JAR into the /plugins directory.
-
-3. Restart Metabase  
-   Restart the container to load the new driver.
-
-## Testing the Connection
-
-The driver includes a built-in connection test. If you encounter any issues:
-
-- Verify your configuration details.
-- Check the logs for any error messages (e.g., issues with the Flight SQL connection).
+- **Host**: (Default: localhost) – The server's hostname or IP address.
+- **Port**: (Default: 443) – The port to use for the connection.
+- **User**: (Optional) – Username for authentication.
+- **Password**: (Optional) – Password for authentication.
+- **Token**: (Optional) – A secure token for connection (used by Spice.ai).
+- **Catalog**: (Optional) - The name of the catalog to use.
+- **Use Encryption**: (Default: true) – Enable or disable connection encryption.
 
 ## Project Structure
 
-A simplified overview of the project structure:
-
 ```
 .
-├── data
-├── docs
-├── resources
-├── src
-│   └── metabase
-│       └── driver
+├── src/metabase/driver/       # Driver source code
+│   └── arrow_flight_sql.clj
+├── resources/                 # Plugin manifest
+│   └── metabase-plugin.yaml
+├── scripts/                   # Automation scripts
+│   └── metabase_setup.py
+├── gizmosql/                  # GizmoSQL configuration
+│   └── init.sql               # Test data (sales, hr, analytics schemas)
+├── spice/                     # Spice.ai configuration
+│   └── spicepod.yaml
+├── data/                      # Parquet files for Spice.ai
+├── docker-compose.yaml        # Container orchestration
+└── CLAUDE.md                  # Development guide
 ```
+
+## End-to-End Testing
+
+The project includes comprehensive end-to-end testing:
+
+```bash
+# Clean start (removes all data)
+podman compose down -v
+podman compose up -d
+
+# Wait for Metabase, then run setup
+python scripts/metabase_setup.py
+```
+
+The setup script creates a test dashboard with:
+- **32 cards** with various chart types (scalar, bar, pie, line, area, table, gauge, funnel, scatter, progress)
+- **5 field filters** (Order Status, Country, Department, Marketing Channel, Date Range)
+- **3 test schemas** in GizmoSQL (sales, hr, analytics)
+
+### Claude Code Integration
+
+If using Claude Code, run `/e2e-test` for guided end-to-end testing instructions.
+
+## Features Tested
+
+- SQL Native queries
+- Graphical query editor
+- Database syncs
+- Field filters (single table and JOINs with table aliases)
+- Dashboard rendering with multiple concurrent queries
+- Connection pooling stability
+- Date/time type handling
+
+## Troubleshooting
+
+### Check Metabase logs
+```bash
+podman logs metabase 2>&1 | tail -100
+```
+
+### Check connection pool status
+```bash
+podman logs metabase 2>&1 | grep "connections:"
+```
+
+### Rebuild driver after code changes
+```bash
+podman compose down metabase builder
+podman compose up -d builder
+# Wait ~30 seconds for build
+podman compose up -d metabase
+```
+
 ## License
 
 Copyright © 2025 Georvic Tur
@@ -103,13 +169,7 @@ This project is available under the terms of the Apache License 2.0 (https://www
 
 ## AI-Assisted Development
 
-This project was built with help from ChatGPT, along with reference to the Metabase repository and several of its existing drivers. While I'm not a Clojure developer by background, these tools made development much more approachable.
-
-## Features that have been tested so far
-
-- SQL Native queries
-- Graphical query editor (manual changes of the metadata are needed at the moment)
-- Database syncs
+This project was built with help from ChatGPT and Claude Code, along with reference to the Metabase repository and several of its existing drivers. While I'm not a Clojure developer by background, these tools made development much more approachable.
 
 ## Contributing
 
