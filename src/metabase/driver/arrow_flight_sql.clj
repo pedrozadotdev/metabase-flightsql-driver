@@ -5,7 +5,7 @@
   ...
   " 
   (:import
-   (java.sql PreparedStatement Timestamp Types Date Time)
+   (java.sql Connection PreparedStatement ResultSet Timestamp Types Date Time)
    (java.time LocalDate LocalTime LocalDateTime OffsetDateTime)
    )
   (:require
@@ -37,6 +37,31 @@
 ;; Define the display name for the Arrow Flight SQL driver.
 (defmethod driver/display-name :arrow-flight-sql [_]
   "Arrow Flight SQL")
+
+;; ----------------------------------------------------------------
+;; Override connection options to skip transaction isolation level check.
+;; Arrow Flight SQL JDBC driver throws NullPointerException when checking
+;; supportsTransactionIsolationLevel because some servers (like GizmoSQL)
+;; don't return required SqlInfo metadata.
+(defmethod sql-jdbc.execute/do-with-connection-with-options :arrow-flight-sql
+  [driver db-or-id-or-spec options f]
+  (sql-jdbc.execute/do-with-resolved-connection
+   driver
+   db-or-id-or-spec
+   options
+   (fn [^Connection conn]
+     ;; Skip set-best-transaction-level! which causes NPE with Flight SQL.
+     ;; Just set basic safe options that Flight SQL can handle.
+     (try
+       (.setReadOnly conn true)
+       (catch Exception _ nil))
+     (try
+       (.setAutoCommit conn true)
+       (catch Exception _ nil))
+     (try
+       (.setHoldability conn ResultSet/CLOSE_CURSORS_AT_COMMIT)
+       (catch Exception _ nil))
+     (f conn))))
 
 ;; ----------------------------------------------------------------
 ;; Register feature support flags for the driver.
@@ -215,16 +240,19 @@
 
 
 ;; List tables by querying information_schema.tables.
+;; Note: We don't use CURRENT_CATALOG() because it's not supported by all Flight SQL servers (e.g., Spice/DataFusion)
 (defmethod driver/describe-database :arrow-flight-sql
   [driver database]
   (let [spec (sql-jdbc.conn/connection-details->spec :arrow-flight-sql (:details database))
         conn (jdbc/get-connection spec)]
     (try
       (let [rows (jdbc/query {:connection conn}
-                             ["SELECT table_name, table_schema FROM information_schema.tables WHERE table_catalog = CURRENT_CATALOG()"]
+                             ["SELECT table_name, table_schema FROM information_schema.tables"]
                              {:identifiers str/lower-case})
+            ;; Filter out system schemas
             formatted (->> rows
-                           (filter #(not= (str/lower-case (:table_schema %)) "information_schema"))
+                           (filter #(not (contains? #{"information_schema" "runtime" "pg_catalog"}
+                                                    (str/lower-case (or (:table_schema %) "")))))
                            (map (fn [row]
                                   {:name   (:table_name row)
                                    :schema (:table_schema row)})))]
@@ -235,8 +263,8 @@
 ;; ----------------------------------------------------------------
 ;; Describe a specific table by executing a DESCRIBE query.
 (defmethod driver/describe-table :arrow-flight-sql
-  [_ driver database {:keys [name schema]}]
-  (let [spec (sql-jdbc.conn/connection-details->spec :arrow-flight-sql (:details database))
+  [driver database {:keys [name schema]}]
+  (let [spec (sql-jdbc.conn/connection-details->spec driver (:details database))
         conn (jdbc/get-connection spec)]
     (try
       (let [query   (format "DESCRIBE \"%s\".\"%s\"" schema name) ;; Build the DESCRIBE query using schema and table name
@@ -271,17 +299,17 @@
 ;; ----------------------------------------------------------------
 ;; Describe fields by querying the information_schema.columns table.
 ;; Builds a dynamic SQL query based on provided schema and table names.
+;; Note: We don't use CURRENT_CATALOG() because it's not supported by all Flight SQL servers (e.g., Spice/DataFusion)
 (defmethod sql-jdbc.sync/describe-fields-sql :arrow-flight-sql
   [driver & {:keys [schema-names table-names details]}]
   (let [base-condition [:>= [:inline 1] [:inline 1]]
-        catalog-condition [:= :table_catalog [:raw "CURRENT_CATALOG()"]]
         schema-condition (when (seq schema-names)
                            [:in [:lower :table_schema]
                             (mapv (fn [s] [:inline (str/lower-case s)]) schema-names)])
         table-condition (when (seq table-names)
                           [:in [:lower :table_name]
                            (mapv (fn [t] [:inline (str/lower-case t)]) table-names)])
-        where-clause (cond-> [base-condition catalog-condition]
+        where-clause (cond-> [base-condition]
                        schema-condition (conj schema-condition)
                        table-condition (conj table-condition))]
     (sql/format

@@ -22,6 +22,7 @@ services:
     depends_on:
       - postgres
       - spiced
+      - gizmosql
       - builder
     volumes:
       - jar-volume:/builder/target
@@ -37,6 +38,8 @@ services:
             exec /app/run_metabase.sh"
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       MB_DB_TYPE: postgres
       MB_DB_DBNAME: metabaseappdb
@@ -85,6 +88,26 @@ services:
       - "50051:50051"
       - "8090:8090"
       - "9090:9090"
+    networks:
+      - metanet1
+
+  gizmosql:
+    image: gizmodata/gizmosql:latest
+    container_name: gizmosql
+    hostname: gizmosql
+    volumes:
+      - type: bind
+        source: ./gizmosql-init.sql
+        target: /opt/gizmosql/init.sql
+    environment:
+      TLS_ENABLED: "false"
+      GIZMOSQL_USERNAME: "gizmosql"
+      GIZMOSQL_PASSWORD: "gizmosql_password"
+      PRINT_QUERIES: "1"
+      DATABASE_FILENAME: ":memory:"
+      INIT_SQL_COMMANDS_FILE: "/opt/gizmosql/init.sql"
+    ports:
+      - "31337:31337"
     networks:
       - metanet1
 
