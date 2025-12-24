@@ -36,8 +36,6 @@ services:
             exec /app/run_metabase.sh"
     ports:
       - "3000:3000"
-    env_file:
-      - .env
     environment:
       MB_DB_TYPE: postgres
       MB_DB_DBNAME: metabaseappdb
