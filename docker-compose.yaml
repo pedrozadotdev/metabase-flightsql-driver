@@ -76,7 +76,7 @@ services:
       - /spice_sandbox
     volumes:
       - type: bind
-        source: ./spicepod.yaml
+        source: ./spice/spicepod.yaml
         target: /app/spicepod.yaml
       - type: bind
         source: ./data
