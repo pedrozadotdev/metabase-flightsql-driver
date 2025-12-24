@@ -87,6 +87,21 @@
 ;; Build a connection spec from the provided database details.
 ;; This constructs a JDBC connection specification map for Arrow Flight SQL.
 ;; ----------------------------------------------------------------
+;; Define the cast function once as a stable reference to avoid pool invalidation.
+;; If this is an anonymous fn inside connection-details->spec, the hash changes
+;; on every call, causing Metabase to constantly invalidate the connection pool.
+(defn- arrow-flight-sql-cast-fn
+  "Cast function for Arrow Flight SQL result values."
+  [col val]
+  (case (:base-type col)
+    :type/Date     (if (instance? java.sql.Date val) (.toLocalDate ^java.sql.Date val) val)
+    :type/Time     (if (instance? java.sql.Time val) (.toLocalTime ^java.sql.Time val) val)
+    :type/DateTime (cond
+                     (instance? java.sql.Timestamp val) (.toLocalDateTime ^java.sql.Timestamp val)
+                     (instance? java.time.OffsetDateTime val) (.toLocalDateTime ^java.time.OffsetDateTime val)
+                     :else val)
+    val))
+
 (defmethod sql-jdbc.conn/connection-details->spec :arrow-flight-sql
   [_ details]
   (let [{:keys [host port token username user password catalog useEncryption disableCertificateVerification]
@@ -129,15 +144,8 @@
       {:classname   "org.apache.arrow.driver.jdbc.ArrowFlightJdbcDriver"
        :subprotocol "arrow-flight-sql"
        :subname     subname
-       :cast (fn [col val]
-               (case (:base-type col)
-                 :type/Date     (if (instance? java.sql.Date val) (.toLocalDate ^java.sql.Date val) val)
-                 :type/Time     (if (instance? java.sql.Time val) (.toLocalTime ^java.sql.Time val) val)
-                 :type/DateTime (cond
-                                  (instance? java.sql.Timestamp val) (.toLocalDateTime ^java.sql.Timestamp val)
-                                  (instance? java.time.OffsetDateTime val) (.toLocalDateTime ^java.time.OffsetDateTime val)
-                                  :else val)
-                 val))})))
+       ;; Use stable function reference to prevent pool invalidation
+       :cast arrow-flight-sql-cast-fn})))
 
 ;; ----------------------------------------------------------------
 ;; Test the connection to the Arrow Flight SQL database.
