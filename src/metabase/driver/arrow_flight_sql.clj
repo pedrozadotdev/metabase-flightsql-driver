@@ -184,10 +184,15 @@
 (def ^:private database-type->base-type
   (sql-jdbc.sync/pattern-based-database-type->base-type
    [[#"BOOL"                       :type/Boolean]
-    [#"INT(8|16|32|64)?$"          :type/Integer]
-    [#"UINT(8|16|32)$"             :type/Integer]
-    [#"UINT64"                     :type/BigInteger]
+    ;; BIGINT must come before the generic INT pattern, otherwise re-find
+    ;; matches "INT$" inside "BIGINT" and misclassifies it as :type/Integer.
     [#"BIGINT|HUGEINT"             :type/BigInteger]
+    [#"UINT64"                     :type/BigInteger]
+    ;; Match Arrow-style (INT, INT8, INT32, …) and standard SQL INTEGER.
+    ;; SMALLINT, TINYINT, MEDIUMINT also match via re-find partial matching
+    ;; of "INT$" at the end of the type name.
+    [#"INT(EGER|8|16|32|64)?$"     :type/Integer]
+    [#"UINT(8|16|32)$"             :type/Integer]
     [#"FLOAT(16|32|64)?$"          :type/Float]
     [#"DOUBLE|REAL"                :type/Float]
     [#"DECIMAL|NUMERIC"            :type/Decimal]
